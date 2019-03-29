@@ -1,3 +1,5 @@
+#include <utility>
+
 //
 // Created by User on 2019/3/29.
 //
@@ -11,18 +13,19 @@
 inline std::string error_info_string(std::string &&prefix, int line) noexcept {
 	std::stringstream builder;
 	builder << "error occurred in class serial_port, when "
-	        << prefix << "(" << __FILE__ << "(" << line << "))"
-	        << " with code" << GetLastError();
+	        << prefix << " with code " << GetLastError() << std::endl
+	        << __FILE__ << '(' << line << ')';
 	return builder.str();
 }
 
 #define THROW(INFO, LINE) throw std::exception(error_info_string(INFO, LINE).c_str())
 #define TRY(OPERATION, LINE) if(!OPERATION) THROW(#OPERATION, LINE)
 
-serial_port::serial_port(const std::string &port_name,
-                         unsigned int baud_rate,
-                         size_t buffer_size) {
-	auto temp = std::string(R"(\\.\)") + port_name;
+serial_port::serial_port(const serial_port_config &config,
+                         received_t &&received)
+		: received(std::move(received)) {
+	
+	auto temp = std::string(R"(\\.\)") + config.name;
 	handle = CreateFileA(temp.c_str(),  // 串口名，`COM9` 之后需要前缀
 	                     GENERIC_READ | GENERIC_WRITE, // 读和写
 	                     0,                            // 独占模式
@@ -36,12 +39,12 @@ serial_port::serial_port(const std::string &port_name,
 	// 设置端口设定
 	DCB dcb;
 	TRY(GetCommState(handle, &dcb), __LINE__);
-	dcb.BaudRate = baud_rate;
+	dcb.BaudRate = config.baud_rate;
 	dcb.ByteSize = 8;
 	TRY(SetCommState(handle, &dcb), __LINE__);
 	
 	// 设置超时时间
-	COMMTIMEOUTS timeouts{100, 10, 0, 100, 100};
+	COMMTIMEOUTS timeouts{1, 1, 0, 1, 0};
 	TRY(SetCommTimeouts(handle, &timeouts), __LINE__);
 	
 	// 设置缓冲区容量
@@ -50,6 +53,7 @@ serial_port::serial_port(const std::string &port_name,
 	// 订阅事件
 	TRY(SetCommMask(handle, EV_RXCHAR), __LINE__);
 	
+	auto buffer_size = config.buffer_size;
 	std::thread([buffer_size, this] {
 		DWORD                event;
 		OVERLAPPED           overlapped{};
@@ -73,8 +77,7 @@ serial_port::serial_port(const std::string &port_name,
 			if (GetLastError() == ERROR_IO_PENDING) {
 				DWORD actual = 0;
 				GetOverlappedResult(handle, &overlapped, &actual, true);
-				std::cout << "read: " << actual << std::endl;
-				std::cout << buffer.data() << std::endl;
+				this->received(std::vector<uint8_t>(buffer.begin(), buffer.begin() + actual));
 			}
 		}
 	}).detach();
