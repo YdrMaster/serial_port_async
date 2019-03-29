@@ -2,6 +2,9 @@
 #include <thread>
 #include "serial_port.hh"
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
+
 int main() {
 	try {
 		serial_port port({"COM3", 9600, 128},
@@ -10,11 +13,15 @@ int main() {
 			                 std::cout << std::string(data.begin(), data.end()) << std::endl;
 		                 });
 		
+		const auto text = "abcde";
 		while (true) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(10));
-			port << std::vector<uint8_t>{'a', 'b', 'c', 'd', 'e'};
+			auto actual = port.send((uint8_t *) text, std::strlen(text));
+			if (actual != 5) std::cerr << actual << std::endl;
 		}
 	} catch (std::exception &e) {
 		std::cerr << e.what() << std::endl;
 	}
 }
+
+#pragma clang diagnostic pop

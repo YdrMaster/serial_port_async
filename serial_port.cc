@@ -44,11 +44,11 @@ serial_port::serial_port(const serial_port_config &config,
 	TRY(SetCommState(handle, &dcb), __LINE__);
 	
 	// 设置超时时间
-	COMMTIMEOUTS timeouts{1, 1, 0, 1, 0};
+	COMMTIMEOUTS timeouts{3, 1, 0, 10, 0};
 	TRY(SetCommTimeouts(handle, &timeouts), __LINE__);
 	
 	// 设置缓冲区容量
-	TRY(SetupComm(handle, 14 * 32, 14 * 32), __LINE__);
+	TRY(SetupComm(handle, 2 * config.buffer_size, 14 * 32), __LINE__);
 	
 	// 订阅事件
 	TRY(SetCommMask(handle, EV_RXCHAR), __LINE__);
@@ -89,15 +89,20 @@ serial_port::~serial_port() {
 	CloseHandle(handle);
 }
 
-serial_port &serial_port::operator<<(std::vector<uint8_t> &&data) {
+size_t serial_port::send(const uint8_t *data, size_t size) {
 	OVERLAPPED overlapped{};
 	
-	WriteFile(handle, data.data(), data.size(), nullptr, &overlapped);
-	if (GetLastError() == ERROR_IO_PENDING) {
+	WriteFile(handle, data, size, nullptr, &overlapped);
+	auto condition = GetLastError();
+	if (condition == ERROR_IO_PENDING) {
 		DWORD actual = 0;
 		GetOverlappedResult(handle, &overlapped, &actual, true);
-		if (actual != data.size()) THROW("WriteFile", __LINE__);
+		return actual;
+	} else {
+		std::stringstream builder;
+		builder << "error occurred in class serial_port, when send "
+		        << "with code " << condition << std::endl
+		        << __FILE__ << '(' << __LINE__ << ')';
+		throw std::exception(builder.str().c_str());
 	}
-	
-	return *this;
 }
