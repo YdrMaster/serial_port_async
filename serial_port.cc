@@ -8,18 +8,17 @@
 
 #include <sstream>
 #include <thread>
-#include <iostream>
 
-inline std::string error_info_string(std::string &&prefix, int line) noexcept {
+inline std::string error_info_string(std::string &&prefix, DWORD code, int line) noexcept {
 	std::stringstream builder;
 	builder << "error occurred in class serial_port, when "
-	        << prefix << " with code " << GetLastError() << std::endl
+	        << prefix << " with code " << code << std::endl
 	        << __FILE__ << '(' << line << ')';
 	return builder.str();
 }
 
-#define THROW(INFO, LINE) throw std::exception(error_info_string(INFO, LINE).c_str())
-#define TRY(OPERATION, LINE) if(!OPERATION) THROW(#OPERATION, LINE)
+#define THROW(INFO, CODE, LINE) throw std::exception(error_info_string(INFO, CODE, LINE).c_str())
+#define TRY(OPERATION, LINE) if(!OPERATION) THROW(#OPERATION, GetLastError(), LINE)
 
 serial_port::serial_port(const serial_port_config &config,
                          received_t &&received)
@@ -34,7 +33,7 @@ serial_port::serial_port(const serial_port_config &config,
 	                     FILE_FLAG_OVERLAPPED,
 	                     nullptr);
 	
-	if (handle == INVALID_HANDLE_VALUE) THROW("CreateFileA(...)", __LINE__);
+	if (handle == INVALID_HANDLE_VALUE) THROW("CreateFileA(...)", GetLastError(), __LINE__);
 	
 	// 设置端口设定
 	DCB dcb;
@@ -55,29 +54,30 @@ serial_port::serial_port(const serial_port_config &config,
 	
 	auto buffer_size = config.buffer_size;
 	std::thread([buffer_size, this] {
-		DWORD                event;
+		DWORD                event = 0;
 		OVERLAPPED           overlapped{};
 		std::vector<uint8_t> buffer(buffer_size);
 		
 		while (true) {
 			do {
 				overlapped.hEvent = CreateEventA(nullptr, true, false, nullptr);
-				auto done = WaitCommEvent(handle, &event, &overlapped);
-				if (!done && GetLastError() != ERROR_IO_PENDING)
-					throw std::exception();
+				if (!WaitCommEvent(handle, &event, &overlapped)) {
+					auto condition = GetLastError();
+					if (condition != ERROR_IO_PENDING)
+						THROW("wait event", condition, __LINE__);
+				}
 				
-				DWORD progress;
+				DWORD progress = 0;
 				GetOverlappedResult(handle, &overlapped, &progress, true);
 				if (event == 0) return;
 			} while (event != EV_RXCHAR);
-			
-			std::lock_guard<std::mutex> _(lock);
 			
 			ReadFile(handle, buffer.data(), buffer.size(), nullptr, &overlapped);
 			if (GetLastError() == ERROR_IO_PENDING) {
 				DWORD actual = 0;
 				GetOverlappedResult(handle, &overlapped, &actual, true);
-				this->received(std::vector<uint8_t>(buffer.begin(), buffer.begin() + actual));
+				if (actual != 0)
+					this->received(std::vector<uint8_t>(buffer.begin(), buffer.begin() + actual));
 			}
 		}
 	}).detach();
@@ -85,7 +85,6 @@ serial_port::serial_port(const serial_port_config &config,
 
 serial_port::~serial_port() {
 	SetCommMask(handle, 0);
-	std::lock_guard<std::mutex> _(lock);
 	CloseHandle(handle);
 }
 
@@ -98,11 +97,6 @@ size_t serial_port::send(const uint8_t *data, size_t size) {
 		DWORD actual = 0;
 		GetOverlappedResult(handle, &overlapped, &actual, true);
 		return actual;
-	} else {
-		std::stringstream builder;
-		builder << "error occurred in class serial_port, when send "
-		        << "with code " << condition << std::endl
-		        << __FILE__ << '(' << __LINE__ << ')';
-		throw std::exception(builder.str().c_str());
-	}
+	} else
+		THROW("send", condition, __LINE__);
 }
