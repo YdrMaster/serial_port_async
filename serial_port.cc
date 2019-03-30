@@ -7,7 +7,7 @@
 #include "serial_port.hh"
 
 #include <sstream>
-#include <thread>
+#include <vector>
 
 inline std::string error_info_string(std::string &&prefix, DWORD code, int line) noexcept {
 	std::stringstream builder;
@@ -20,11 +20,10 @@ inline std::string error_info_string(std::string &&prefix, DWORD code, int line)
 #define THROW(INFO, CODE, LINE) throw std::exception(error_info_string(INFO, CODE, LINE).c_str())
 #define TRY(OPERATION, LINE) if(!OPERATION) THROW(#OPERATION, GetLastError(), LINE)
 
-serial_port::serial_port(const serial_port_config &config,
-                         received_t &&received)
-		: received(std::move(received)) {
+serial_port::serial_port(const std::string &name,
+                         unsigned int baud_rate) {
 	
-	auto temp = std::string(R"(\\.\)") + config.name;
+	auto temp = std::string(R"(\\.\)") + name;
 	handle = CreateFileA(temp.c_str(),  // 串口名，`COM9` 之后需要前缀
 	                     GENERIC_READ | GENERIC_WRITE, // 读和写
 	                     0,                            // 独占模式
@@ -38,7 +37,7 @@ serial_port::serial_port(const serial_port_config &config,
 	// 设置端口设定
 	DCB dcb;
 	TRY(GetCommState(handle, &dcb), __LINE__);
-	dcb.BaudRate = config.baud_rate;
+	dcb.BaudRate = baud_rate;
 	dcb.ByteSize = 8;
 	TRY(SetCommState(handle, &dcb), __LINE__);
 	
@@ -47,40 +46,10 @@ serial_port::serial_port(const serial_port_config &config,
 	TRY(SetCommTimeouts(handle, &timeouts), __LINE__);
 	
 	// 设置缓冲区容量
-	TRY(SetupComm(handle, 2 * config.buffer_size, 14 * 32), __LINE__);
+	TRY(SetupComm(handle, 14 * 32, 14 * 32), __LINE__);
 	
 	// 订阅事件
 	TRY(SetCommMask(handle, EV_RXCHAR), __LINE__);
-	
-	auto buffer_size = config.buffer_size;
-	std::thread([buffer_size, this] {
-		DWORD                event = 0;
-		OVERLAPPED           overlapped{};
-		std::vector<uint8_t> buffer(buffer_size);
-		
-		while (true) {
-			do {
-				overlapped.hEvent = CreateEventA(nullptr, true, false, nullptr);
-				if (!WaitCommEvent(handle, &event, &overlapped)) {
-					auto condition = GetLastError();
-					if (condition != ERROR_IO_PENDING)
-						THROW("wait event", condition, __LINE__);
-				}
-				
-				DWORD progress = 0;
-				GetOverlappedResult(handle, &overlapped, &progress, true);
-				if (event == 0) return;
-			} while (event != EV_RXCHAR);
-			
-			ReadFile(handle, buffer.data(), buffer.size(), nullptr, &overlapped);
-			if (GetLastError() == ERROR_IO_PENDING) {
-				DWORD actual = 0;
-				GetOverlappedResult(handle, &overlapped, &actual, true);
-				if (actual != 0)
-					this->received(std::vector<uint8_t>(buffer.begin(), buffer.begin() + actual));
-			}
-		}
-	}).detach();
 }
 
 serial_port::~serial_port() {
@@ -88,15 +57,46 @@ serial_port::~serial_port() {
 	CloseHandle(handle);
 }
 
-size_t serial_port::send(const uint8_t *data, size_t size) {
+void WINAPI callback(DWORD error_code,
+                     DWORD actual,
+                     LPOVERLAPPED overlapped) {
+	if (error_code != ERROR_SUCCESS)
+		THROW("WriteFileEx", error_code, __LINE__);
+	
+	delete static_cast<std::vector<uint8_t> *>(overlapped->hEvent);
+	delete overlapped;
+}
+
+void serial_port::send(const uint8_t *buffer, size_t size) {
+	auto overlapped = new OVERLAPPED;
+	auto ptr        = new std::vector<uint8_t>(buffer, buffer + size);
+	overlapped->hEvent = ptr;
+	WriteFileEx(handle, ptr->data(), size, overlapped, &callback);
+	SleepEx(INFINITE, true);
+}
+
+size_t serial_port::read(uint8_t *buffer, size_t size) {
+	DWORD      event = 0;
 	OVERLAPPED overlapped{};
 	
-	WriteFile(handle, data, size, nullptr, &overlapped);
+	do {
+		overlapped.hEvent = CreateEventA(nullptr, true, false, nullptr);
+		if (!WaitCommEvent(handle, &event, &overlapped)) {
+			auto condition = GetLastError();
+			if (condition != ERROR_IO_PENDING)
+				THROW("WaitCommEvent", condition, __LINE__);
+		}
+		
+		DWORD progress = 0;
+		GetOverlappedResult(handle, &overlapped, &progress, true);
+		if (event == 0) return 0;
+	} while (event != EV_RXCHAR);
+	
+	ReadFile(handle, buffer, size, nullptr, &overlapped);
 	auto condition = GetLastError();
-	if (condition == ERROR_IO_PENDING) {
-		DWORD actual = 0;
-		GetOverlappedResult(handle, &overlapped, &actual, true);
-		return actual;
-	} else
-		THROW("send", condition, __LINE__);
+	if (condition != ERROR_IO_PENDING)
+		THROW("ReadFile", condition, __LINE__);
+	DWORD actual = 0;
+	GetOverlappedResult(handle, &overlapped, &actual, true);
+	return actual;
 }

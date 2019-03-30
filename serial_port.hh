@@ -6,22 +6,17 @@
 #define UNTITLED2_SERIAL_PORT_HH
 
 
-#include <vector>
-#include <mutex>
-#include <functional>
+#include <string>
 #include <Windows.h>
-#include "serial_port_config.h"
 
 /** 串口 */
 class serial_port final {
 public:
-	/** 接收回调 */
-	using received_t = std::function<void(std::vector<uint8_t> &&)>;
-	
 	/**
 	 * 构造器
 	 */
-	explicit serial_port(const serial_port_config &, received_t &&);
+	explicit serial_port(const std::string &name,
+	                     unsigned int baud_rate = 9600);
 	
 	/**
 	 * 析构器
@@ -32,12 +27,16 @@ public:
 	 * 发送
 	 * @return 实际送出的字节数
 	 */
-	size_t send(const uint8_t *, size_t);
+	void send(const uint8_t *, size_t);
+	
+	/**
+	 * 读取
+	 * @return 实际读取的字节数
+	 */
+	size_t read(uint8_t *, size_t);
 
 private:
-	HANDLE           handle;
-	std::mutex       lock;
-	const received_t received;
+	HANDLE handle;
 };
 
 
