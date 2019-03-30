@@ -6,7 +6,8 @@
 #define UNTITLED2_SERIAL_PORT_HH
 
 
-#include "serial_port_basic_config.h"
+#include <string>
+#include <Windows.h>
 
 /** 串口 */
 class serial_port final {

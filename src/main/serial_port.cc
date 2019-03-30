@@ -32,7 +32,8 @@ serial_port::serial_port(const std::string &name,
 	                     FILE_FLAG_OVERLAPPED,
 	                     nullptr);
 	
-	if (handle == INVALID_HANDLE_VALUE) THROW("CreateFileA(...)", GetLastError(), __LINE__);
+	if (handle == INVALID_HANDLE_VALUE)
+		THROW("CreateFileA(...)", GetLastError(), __LINE__);
 	
 	// 设置端口设定
 	DCB dcb;
