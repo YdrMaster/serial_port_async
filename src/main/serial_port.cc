@@ -68,7 +68,7 @@ void WINAPI callback(DWORD error_code,
 }
 
 void serial_port::send(const uint8_t *buffer, size_t size) {
-	auto overlapped = new OVERLAPPED;
+	auto overlapped = new OVERLAPPED{};
 	auto ptr        = new std::vector<uint8_t>(buffer, buffer + size);
 	overlapped->hEvent = ptr;
 	WriteFileEx(handle, ptr->data(), size, overlapped, &callback);

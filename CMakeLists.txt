@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(untitled2)
+project(serial_port_async)
 
-set(CMAKE_CXX_STANDARD 14)
-
-add_executable(untitled2 main.cpp serial_port.cc serial_port.hh serial_port_config.h)
+add_subdirectory(src/main)
+add_subdirectory(src/sample)

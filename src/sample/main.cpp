@@ -1,6 +1,6 @@
 #include <iostream>
 #include <thread>
-#include "serial_port.hh"
+#include "../main/serial_port.hh"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
