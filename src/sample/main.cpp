@@ -13,7 +13,13 @@ int main() {
 			uint8_t buffer[128]{};
 			while (true) {
 				auto actual = port.read(buffer, sizeof(buffer) - 1);
-				std::cout << std::string(buffer, buffer + actual) << std::endl;
+				//				std::cout << std::string(buffer, buffer + actual) << std::endl;
+			}
+		}).detach();
+		
+		std::thread([&port] {
+			while (true) {
+				std::cerr << port.test() << std::endl;
 			}
 		}).detach();
 		

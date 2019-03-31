@@ -7,7 +7,8 @@
 
 
 #include <string>
-#include <Windows.h>
+#include <atomic>
+#include <mutex>
 
 /** 串口 */
 class serial_port final {
@@ -16,7 +17,9 @@ public:
 	 * 构造器
 	 */
 	explicit serial_port(const std::string &name,
-	                     unsigned int baud_rate = 9600);
+	                     unsigned int baud_rate = 9600,
+	                     size_t in_buffer_size = 0xffff,
+	                     size_t out_buffer_size = 0xffff);
 	
 	/**
 	 * 析构器
@@ -25,7 +28,6 @@ public:
 	
 	/**
 	 * 发送
-	 * @return 实际送出的字节数
 	 */
 	void send(const uint8_t *, size_t);
 	
@@ -34,9 +36,21 @@ public:
 	 * @return 实际读取的字节数
 	 */
 	size_t read(uint8_t *, size_t);
+	
+	/**
+	 * 中断正在阻塞的读操作
+	 */
+	void break_read() const;
+	
+	/**
+	 * @return 仍未返回的读操作数量
+	 */
+	unsigned int read_count() const;
 
 private:
-	HANDLE handle;
+	void               *handle;
+	std::atomic_uint   read_counter;
+	mutable std::mutex break_mutex;
 };
 
 
