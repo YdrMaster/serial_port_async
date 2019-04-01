@@ -18,8 +18,8 @@ public:
 	 */
 	explicit serial_port(const std::string &name,
 	                     unsigned int baud_rate = 9600,
-	                     size_t in_buffer_size = 0xffff,
-	                     size_t out_buffer_size = 0xffff);
+	                     size_t in_buffer_size = 0x100,
+	                     size_t out_buffer_size = 0x100);
 	
 	/**
 	 * 析构器
@@ -41,16 +41,10 @@ public:
 	 * 中断正在阻塞的读操作
 	 */
 	void break_read() const;
-	
-	/**
-	 * @return 仍未返回的读操作数量
-	 */
-	unsigned int read_count() const;
 
 private:
 	void               *handle;
-	std::atomic_uint   read_counter;
-	mutable std::mutex break_mutex;
+	mutable std::mutex read_mutex;
 };
 
 

@@ -12,18 +12,22 @@
 #include <Windows.h>
 
 /** 内存安全计数器 */
-struct counter_guard {
-	explicit counter_guard(std::atomic_uint &data)
-			: data(data) { ++data; }
-	
-	counter_guard(const counter_guard &) = delete;
-	
-	counter_guard(counter_guard &&) = delete;
-	
-	~counter_guard() { --data; }
+class weak_lock_guard {
+	volatile bool locked;
+	std::mutex    &lock;
 
-private:
-	std::atomic_uint &data;
+public:
+	explicit weak_lock_guard(std::mutex &lock)
+			: lock(lock),
+			  locked(lock.try_lock()) {}
+	
+	explicit operator bool() const { return locked; }
+	
+	bool retry() {
+		return locked ? true : locked = lock.try_lock();
+	}
+	
+	~weak_lock_guard() { if (locked) lock.unlock(); }
 };
 
 inline std::string error_info_string(std::string &&prefix, DWORD code, int line) noexcept;
@@ -34,8 +38,7 @@ inline std::string error_info_string(std::string &&prefix, DWORD code, int line)
 serial_port::serial_port(const std::string &name,
                          unsigned int baud_rate,
                          size_t in_buffer_size,
-                         size_t out_buffer_size)
-		: read_counter(0) {
+                         size_t out_buffer_size) {
 	
 	auto temp = std::string(R"(\\.\)") + name;
 	handle = CreateFileA(temp.c_str(),  // 串口名，`COM9` 之后需要前缀
@@ -93,7 +96,8 @@ void serial_port::send(const uint8_t *buffer, size_t size) {
 }
 
 size_t serial_port::read(uint8_t *buffer, size_t size) {
-	counter_guard _(read_counter);
+	weak_lock_guard lock(read_mutex);
+	if (!lock) return 0;
 	
 	DWORD      event = 0;
 	OVERLAPPED overlapped{};
@@ -121,15 +125,12 @@ size_t serial_port::read(uint8_t *buffer, size_t size) {
 }
 
 void serial_port::break_read() const {
-	std::lock_guard<std::mutex> _(break_mutex);
-	while (read_counter > 0) {
+	weak_lock_guard lock(read_mutex);
+	
+	while (!lock.retry()) {
 		SetCommMask(handle, EV_RXCHAR);
 		std::this_thread::yield();
 	}
-}
-
-uint32_t serial_port::read_count() const {
-	return read_counter.load();
 }
 
 std::string error_info_string(std::string &&prefix,

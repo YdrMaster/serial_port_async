@@ -8,15 +8,7 @@
 
 int main() {
 	try {
-		serial_port port("COM3", 115200);
-		
-		/** 此线程监视活跃读线程 */
-		std::thread([&port] {
-			while (true) {
-				std::cerr << port.read_count() << std::endl;
-				std::this_thread::sleep_for(std::chrono::milliseconds(100));
-			}
-		}).detach();
+		serial_port port("COM4", 115200);
 		
 		/** 此线程控制读线程 */
 		std::thread([&port] {
