@@ -93,14 +93,19 @@ void WINAPI callback(DWORD error_code,
 		THROW("WriteFileEx", error_code);
 }
 
-void serial_port::send(const uint8_t *buffer, size_t size) {
+void serial_port::write(const uint8_t *buffer, size_t size) {
 	if (size <= 0) return;
 	
-	auto overlapped = new OVERLAPPED{};
-	auto ptr        = new std::vector<uint8_t>(buffer, buffer + size);
-	overlapped->hEvent = ptr;
-	WriteFileEx(handle, ptr->data(), size, overlapped, &callback);
-	SleepEx(INFINITE, true);
+	if (!write_flag.test_and_set()) {
+		auto overlapped = new OVERLAPPED{};
+		auto ptr        = new std::vector<uint8_t>(buffer, buffer + size);
+		overlapped->hEvent = ptr;
+		WriteFileEx(handle, ptr->data(), size, overlapped, &callback);
+		SleepEx(INFINITE, true);
+	} else {
+		for (size_t i = 0; i < size; ++i)
+			_o.push_back(buffer[i]);
+	}
 }
 
 size_t serial_port::read(uint8_t *buffer, size_t size) {
@@ -142,18 +147,30 @@ void serial_port::operator()() {
 	} while (!(event & EVENT));
 	
 	if (event & EV_TXEMPTY) {
-		std::cout << "Hello world!" << std::endl;
+		if (_o.empty())
+			write_flag.clear();
+		else {
+			auto overlapped_ptr = new OVERLAPPED{};
+			auto ptr            = new std::vector<uint8_t>;
+			overlapped_ptr->hEvent = ptr;
+			while (!_o.empty()) {
+				ptr->push_back(_o.front());
+				_o.pop_front();
+			}
+			WriteFileEx(handle, ptr->data(), ptr->size(), overlapped_ptr, &callback);
+			SleepEx(INFINITE, true);
+		}
 	}
 	
-	std::vector<uint8_t> buffer(buffer_size);
 	if (event & EV_RXCHAR) {
+		std::vector<uint8_t> buffer(buffer_size);
 		ReadFile(handle, buffer.data(), buffer_size, nullptr, &overlapped);
 		auto condition = GetLastError();
 		if (condition != ERROR_IO_PENDING)
 			THROW("ReadFile", condition);
 		DWORD actual = 0;
 		GetOverlappedResult(handle, &overlapped, &actual, true);
-		for (int i = 0; i < actual; ++i) _i.push_back(buffer[i]);
+		for (size_t i = 0; i < actual; ++i) _i.push_back(buffer[i]);
 	}
 }
 

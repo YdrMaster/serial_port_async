@@ -30,7 +30,7 @@ public:
 	/**
 	 * 发送
 	 */
-	void send(const uint8_t *, size_t);
+	void write(const uint8_t *buffer, size_t size);
 	
 	/**
 	 * 读取
@@ -48,7 +48,10 @@ public:
 private:
 	std::atomic<void *> handle;
 	mutable std::mutex  read_mutex;
-	const size_t        buffer_size;
+	
+	const size_t     buffer_size;
+	std::atomic_flag write_flag = ATOMIC_FLAG_INIT;
+	
 	std::deque<uint8_t> _i, _o;
 };
 

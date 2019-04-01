@@ -20,7 +20,7 @@ int main() {
 		const auto text = "abcdef";
 		while (true) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(50));
-			port.send((uint8_t *) text, std::strlen(text));
+			port.write((uint8_t *) text, std::strlen(text));
 		}
 	} catch (std::exception &e) {
 		std::cerr << e.what() << std::endl;
