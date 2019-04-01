@@ -6,12 +6,14 @@
 
 #include "serial_port.hh"
 
+#ifdef _MSC_VER
+
 #include <sstream>
 #include <vector>
 #include <thread>
 #include <Windows.h>
 
-/** 内存安全计数器 */
+/** 受控锁 */
 class weak_lock_guard {
 	volatile bool locked;
 	std::mutex    &lock;
@@ -71,8 +73,10 @@ serial_port::serial_port(const std::string &name,
 }
 
 serial_port::~serial_port() {
+	auto temp = handle.exchange(nullptr);
+	if (!temp) return;
 	break_read();
-	CloseHandle(handle);
+	CloseHandle(temp);
 }
 
 void WINAPI callback(DWORD error_code,
@@ -142,3 +146,5 @@ std::string error_info_string(std::string &&prefix,
 	        << __FILE__ << '(' << line << ')';
 	return builder.str();
 }
+
+#endif
