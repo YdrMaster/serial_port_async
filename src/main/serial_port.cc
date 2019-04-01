@@ -43,7 +43,8 @@ inline std::string error_info_string(std::string &&prefix, DWORD code, int line)
 serial_port::serial_port(const std::string &name,
                          unsigned int baud_rate,
                          size_t in_buffer_size,
-                         size_t out_buffer_size) {
+                         size_t out_buffer_size)
+		: buffer_size(in_buffer_size) {
 	
 	auto temp = std::string(R"(\\.\)") + name;
 	handle = CreateFileA(temp.c_str(),  // 串口名，`COM9` 之后需要前缀
@@ -106,6 +107,24 @@ size_t serial_port::read(uint8_t *buffer, size_t size) {
 	weak_lock_guard lock(read_mutex);
 	if (!lock) return 0;
 	
+	size_t i;
+	for (i = 0; i < size && !_i.empty(); ++i) {
+		buffer[i] = _i.front();
+		_i.pop_front();
+	}
+	return i;
+}
+
+void serial_port::break_read() const {
+	weak_lock_guard lock(read_mutex);
+	
+	while (!lock.retry()) {
+		SetCommMask(handle, EVENT);
+		std::this_thread::yield();
+	}
+}
+
+void serial_port::operator()() {
 	DWORD      event = 0;
 	OVERLAPPED overlapped{};
 	
@@ -119,31 +138,22 @@ size_t serial_port::read(uint8_t *buffer, size_t size) {
 		
 		DWORD progress = 0;
 		GetOverlappedResult(handle, &overlapped, &progress, true);
-		if (event == 0) return 0;
+		if (event == 0) return;
 	} while (!(event & EVENT));
 	
 	if (event & EV_TXEMPTY) {
 		std::cout << "Hello world!" << std::endl;
-		return 0;
 	}
 	
+	std::vector<uint8_t> buffer(buffer_size);
 	if (event & EV_RXCHAR) {
-		ReadFile(handle, buffer, size, nullptr, &overlapped);
+		ReadFile(handle, buffer.data(), buffer_size, nullptr, &overlapped);
 		auto condition = GetLastError();
 		if (condition != ERROR_IO_PENDING)
 			THROW("ReadFile", condition);
 		DWORD actual = 0;
 		GetOverlappedResult(handle, &overlapped, &actual, true);
-		return actual;
-	}
-}
-
-void serial_port::break_read() const {
-	weak_lock_guard lock(read_mutex);
-	
-	while (!lock.retry()) {
-		SetCommMask(handle, EVENT);
-		std::this_thread::yield();
+		for (int i = 0; i < actual; ++i) _i.push_back(buffer[i]);
 	}
 }
 

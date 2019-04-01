@@ -7,6 +7,7 @@
 
 
 #include <string>
+#include <deque>
 #include <atomic>
 #include <mutex>
 
@@ -37,6 +38,8 @@ public:
 	 */
 	size_t read(uint8_t *, size_t);
 	
+	void operator()();
+	
 	/**
 	 * 中断正在阻塞的读操作
 	 */
@@ -45,6 +48,8 @@ public:
 private:
 	std::atomic<void *> handle;
 	mutable std::mutex  read_mutex;
+	const size_t        buffer_size;
+	std::deque<uint8_t> _i, _o;
 };
 
 
