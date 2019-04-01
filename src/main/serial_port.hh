@@ -7,9 +7,11 @@
 
 
 #include <string>
+#include <vector>
 #include <deque>
 #include <atomic>
 #include <mutex>
+#include "event_t.h"
 
 /** 串口 */
 class serial_port final {
@@ -36,18 +38,23 @@ public:
 	 * 读取
 	 * @return 实际读取的字节数
 	 */
-	size_t read(uint8_t *, size_t);
+	std::vector<uint8_t> read();
 	
-	void operator()();
+	/**
+	 * 响应事件
+	 *
+	 * @return 此次响应的事件类型
+	 */
+	event_t operator()();
 	
 	/**
 	 * 中断正在阻塞的读操作
 	 */
-	void break_read() const;
+	void break_operation() const;
 
 private:
 	std::atomic<void *> handle;
-	mutable std::mutex  read_mutex;
+	mutable std::mutex  opration_mutex;
 	
 	const size_t     buffer_size;
 	std::atomic_flag write_flag = ATOMIC_FLAG_INIT;

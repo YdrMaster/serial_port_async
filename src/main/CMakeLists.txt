@@ -4,4 +4,4 @@ set(CMAKE_CXX_STANDARD 11)
 
 add_library(serial_port_async
         serial_port.hh
-        serial_port.cc)
+        serial_port.cc event_t.h event_t.cpp)

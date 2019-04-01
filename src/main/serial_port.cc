@@ -79,7 +79,7 @@ serial_port::serial_port(const std::string &name,
 serial_port::~serial_port() {
 	auto temp = handle.exchange(nullptr);
 	if (!temp) return;
-	break_read();
+	break_operation();
 	CloseHandle(temp);
 }
 
@@ -108,34 +108,25 @@ void serial_port::write(const uint8_t *buffer, size_t size) {
 	}
 }
 
-size_t serial_port::read(uint8_t *buffer, size_t size) {
-	weak_lock_guard lock(read_mutex);
-	if (!lock) return 0;
-	
-	size_t i;
-	for (i = 0; i < size && !_i.empty(); ++i) {
-		buffer[i] = _i.front();
+std::vector<uint8_t> serial_port::read() {
+	std::vector<uint8_t> temp;
+	while (!_i.empty()) {
+		temp.push_back(_i.front());
 		_i.pop_front();
 	}
-	return i;
+	return temp;
 }
 
-void serial_port::break_read() const {
-	weak_lock_guard lock(read_mutex);
+event_t serial_port::operator()() {
+	weak_lock_guard lock(opration_mutex);
+	if (!lock) return {};
 	
-	while (!lock.retry()) {
-		SetCommMask(handle, EVENT);
-		std::this_thread::yield();
-	}
-}
-
-void serial_port::operator()() {
-	DWORD      event = 0;
+	event_t    event{};
 	OVERLAPPED overlapped{};
 	
 	do {
 		overlapped.hEvent = CreateEventA(nullptr, true, false, nullptr);
-		if (!WaitCommEvent(handle, &event, &overlapped)) {
+		if (!WaitCommEvent(handle, (DWORD *) &event, &overlapped)) {
 			auto condition = GetLastError();
 			if (condition != ERROR_IO_PENDING)
 				THROW("WaitCommEvent", condition);
@@ -143,10 +134,9 @@ void serial_port::operator()() {
 		
 		DWORD progress = 0;
 		GetOverlappedResult(handle, &overlapped, &progress, true);
-		if (event == 0) return;
-	} while (!(event & EVENT));
+	} while (event && !event.read() && !event.writen());
 	
-	if (event & EV_TXEMPTY) {
+	if (event.writen()) {
 		if (_o.empty())
 			write_flag.clear();
 		else {
@@ -162,7 +152,7 @@ void serial_port::operator()() {
 		}
 	}
 	
-	if (event & EV_RXCHAR) {
+	if (event.read()) {
 		std::vector<uint8_t> buffer(buffer_size);
 		ReadFile(handle, buffer.data(), buffer_size, nullptr, &overlapped);
 		auto condition = GetLastError();
@@ -171,6 +161,17 @@ void serial_port::operator()() {
 		DWORD actual = 0;
 		GetOverlappedResult(handle, &overlapped, &actual, true);
 		for (size_t i = 0; i < actual; ++i) _i.push_back(buffer[i]);
+	}
+	
+	return event;
+}
+
+void serial_port::break_operation() const {
+	weak_lock_guard lock(opration_mutex);
+	
+	while (!lock.retry()) {
+		SetCommMask(handle, EVENT);
+		std::this_thread::yield();
 	}
 }
 
