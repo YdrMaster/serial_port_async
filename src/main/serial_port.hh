@@ -8,7 +8,7 @@
 
 #include <string>
 #include <vector>
-#include <deque>
+#include <queue>
 #include <atomic>
 #include <mutex>
 #include "event_t.h"
@@ -56,10 +56,13 @@ private:
 	std::atomic<void *> handle;
 	mutable std::mutex  opration_mutex;
 	
+	
 	const size_t     buffer_size;
 	std::atomic_flag write_flag = ATOMIC_FLAG_INIT;
 	
-	std::deque<uint8_t> _i, _o;
+	std::mutex i_mutex, o_mutex;
+	
+	std::queue<uint8_t> i_, o_;
 };
 
 

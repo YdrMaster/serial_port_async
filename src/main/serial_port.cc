@@ -37,6 +37,9 @@ constexpr unsigned long EVENT = EV_RXCHAR | EV_TXEMPTY;
 
 inline std::string error_info_string(std::string &&prefix, DWORD code, int line) noexcept;
 
+template<class t>
+inline void migrate(std::queue<t> &, std::vector<t> &, std::mutex &);
+
 #define THROW(INFO, CODE) throw std::exception(error_info_string(INFO, CODE, __LINE__).c_str())
 #define TRY(OPERATION) if(!OPERATION) THROW(#OPERATION, GetLastError())
 
@@ -104,16 +107,13 @@ void serial_port::write(const uint8_t *buffer, size_t size) {
 		SleepEx(INFINITE, true);
 	} else {
 		for (size_t i = 0; i < size; ++i)
-			_o.push_back(buffer[i]);
+			o_.push(buffer[i]);
 	}
 }
 
 std::vector<uint8_t> serial_port::read() {
 	std::vector<uint8_t> temp;
-	while (!_i.empty()) {
-		temp.push_back(_i.front());
-		_i.pop_front();
-	}
+	migrate(i_, temp, i_mutex);
 	return temp;
 }
 
@@ -137,16 +137,13 @@ event_t serial_port::operator()() {
 	} while (event && !event.read() && !event.writen());
 	
 	if (event.writen()) {
-		if (_o.empty())
+		if (o_.empty())
 			write_flag.clear();
 		else {
 			auto overlapped_ptr = new OVERLAPPED{};
 			auto ptr            = new std::vector<uint8_t>;
 			overlapped_ptr->hEvent = ptr;
-			while (!_o.empty()) {
-				ptr->push_back(_o.front());
-				_o.pop_front();
-			}
+			migrate(o_, *ptr, o_mutex);
 			WriteFileEx(handle, ptr->data(), ptr->size(), overlapped_ptr, &callback);
 			SleepEx(INFINITE, true);
 		}
@@ -156,11 +153,11 @@ event_t serial_port::operator()() {
 		std::vector<uint8_t> buffer(buffer_size);
 		ReadFile(handle, buffer.data(), buffer_size, nullptr, &overlapped);
 		auto condition = GetLastError();
-		if (condition != ERROR_IO_PENDING)
+		if (condition != ERROR_SUCCESS && condition != ERROR_IO_PENDING)
 			THROW("ReadFile", condition);
 		DWORD actual = 0;
 		GetOverlappedResult(handle, &overlapped, &actual, true);
-		for (size_t i = 0; i < actual; ++i) _i.push_back(buffer[i]);
+		for (size_t i = 0; i < actual; ++i) i_.push(buffer[i]);
 	}
 	
 	return event;
@@ -183,6 +180,17 @@ std::string error_info_string(std::string &&prefix,
 	        << prefix << " with code " << code << std::endl
 	        << __FILE__ << '(' << line << ')';
 	return builder.str();
+}
+
+template<class t>
+void migrate(std::queue<t> &from,
+             std::vector<t> &target,
+             std::mutex &mutex) {
+	std::lock_guard<std::mutex> _(mutex);
+	while (!from.empty()) {
+		target.push_back(from.front());
+		from.pop();
+	}
 }
 
 #endif

@@ -10,12 +10,17 @@ int main() {
 		serial_port port("COM3", 115200);
 		
 		std::thread([&port] {
-			while (true) {
-				auto event = port();
-				if (!event) return;
-				if (!event.read()) continue;
-				auto buffer = port.read();
-				std::cout << std::string(buffer.begin(), buffer.end()) << std::endl;
+			try {
+				while (true) {
+					auto event = port();
+					if (!event) return;
+					if (!event.read()) continue;
+					auto buffer = port.read();
+					std::cout << std::string(buffer.begin(), buffer.end()) << std::endl;
+				}
+			}
+			catch (std::exception &e) {
+				std::cerr << e.what() << std::endl;
 			}
 		}).detach();
 		
