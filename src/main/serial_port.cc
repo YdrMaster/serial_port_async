@@ -121,11 +121,16 @@ size_t serial_port::read(uint8_t *buffer, size_t size) {
 	
 	ReadFile(handle, buffer, size, nullptr, &overlapped);
 	auto condition = GetLastError();
-	if (condition != ERROR_IO_PENDING)
-		THROW("ReadFile", condition);
-	DWORD actual = 0;
-	GetOverlappedResult(handle, &overlapped, &actual, true);
-	return actual;
+	switch (condition) {
+		case ERROR_SUCCESS:
+		case ERROR_IO_PENDING: {
+			DWORD actual = 0;
+			GetOverlappedResult(handle, &overlapped, &actual, true);
+			return actual;
+		}
+		default:
+			THROW("ReadFile", condition);
+	}
 }
 
 void serial_port::break_read() const {
