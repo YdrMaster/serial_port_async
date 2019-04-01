@@ -12,6 +12,7 @@
 #include <vector>
 #include <thread>
 #include <Windows.h>
+#include <iostream>
 
 /** 受控锁 */
 class weak_lock_guard {
@@ -31,6 +32,8 @@ public:
 	
 	~weak_lock_guard() { if (locked) lock.unlock(); }
 };
+
+constexpr unsigned long EVENT = EV_RXCHAR | EV_TXEMPTY;
 
 inline std::string error_info_string(std::string &&prefix, DWORD code, int line) noexcept;
 
@@ -69,7 +72,7 @@ serial_port::serial_port(const std::string &name,
 	TRY(SetupComm(handle, in_buffer_size, out_buffer_size));
 	
 	// 订阅事件
-	TRY(SetCommMask(handle, EV_RXCHAR));
+	TRY(SetCommMask(handle, EVENT));
 }
 
 serial_port::~serial_port() {
@@ -117,22 +120,29 @@ size_t serial_port::read(uint8_t *buffer, size_t size) {
 		DWORD progress = 0;
 		GetOverlappedResult(handle, &overlapped, &progress, true);
 		if (event == 0) return 0;
-	} while (event != EV_RXCHAR);
+	} while (!(event & EVENT));
 	
-	ReadFile(handle, buffer, size, nullptr, &overlapped);
-	auto condition = GetLastError();
-	if (condition != ERROR_IO_PENDING)
-		THROW("ReadFile", condition);
-	DWORD actual = 0;
-	GetOverlappedResult(handle, &overlapped, &actual, true);
-	return actual;
+	if (event & EV_TXEMPTY) {
+		std::cout << "Hello world!" << std::endl;
+		return 0;
+	}
+	
+	if (event & EV_RXCHAR) {
+		ReadFile(handle, buffer, size, nullptr, &overlapped);
+		auto condition = GetLastError();
+		if (condition != ERROR_IO_PENDING)
+			THROW("ReadFile", condition);
+		DWORD actual = 0;
+		GetOverlappedResult(handle, &overlapped, &actual, true);
+		return actual;
+	}
 }
 
 void serial_port::break_read() const {
 	weak_lock_guard lock(read_mutex);
 	
 	while (!lock.retry()) {
-		SetCommMask(handle, EV_RXCHAR);
+		SetCommMask(handle, EVENT);
 		std::this_thread::yield();
 	}
 }

@@ -2,9 +2,11 @@
 #include <thread>
 #include "../main/serial_port.hh"
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
 int main() {
 	try {
-		serial_port port("COM4", 115200);
+		serial_port port("COM3", 115200);
 		
 		std::thread([&port] {
 			uint8_t buffer[128]{};
@@ -14,12 +16,14 @@ int main() {
 			}
 		}).detach();
 		
-		const auto text = "abcde";
+		const auto text = "abcdef";
 		while (true) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			std::this_thread::sleep_for(std::chrono::milliseconds(50));
 			port.send((uint8_t *) text, std::strlen(text));
 		}
 	} catch (std::exception &e) {
 		std::cerr << e.what() << std::endl;
 	}
 }
+
+#pragma clang diagnostic pop
