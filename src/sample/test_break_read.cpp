@@ -8,7 +8,7 @@
 
 int main() {
 	try {
-		serial_port port("COM4", 115200);
+        serial_port port("COM3", 115200);
 		
 		/** 此线程控制读线程 */
 		std::thread([&port] {
