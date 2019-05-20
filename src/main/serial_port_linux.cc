@@ -90,7 +90,7 @@ serial_port::serial_port(const std::string &name,
                          unsigned int baud_rate,
                          size_t in_buffer_size,
                          size_t out_buffer_size) {
-    handle = open(name.c_str(), O_RDWR);
+    handle = open(name.c_str(), O_RDWR | O_NOCTTY);
     
     if (handle == -1)
         THROW("open(...)", std::strerror(errno));
@@ -103,15 +103,15 @@ serial_port::serial_port(const std::string &name,
     options.c_cflag |= CS8;
     TRY(tcsetattr(handle, TCSADRAIN, &options));
     
-    //    // 设置超时时间
-    //    COMMTIMEOUTS timeouts{3, 1, 0, 10, 0};
-    //    TRY(SetCommTimeouts(handle, &timeouts));
+    // // 设置超时时间
+    // COMMTIMEOUTS timeouts{3, 1, 0, 10, 0};
+    // TRY(SetCommTimeouts(handle, &timeouts));
     //
-    //    // 设置缓冲区容量
-    //    TRY(SetupComm(handle, in_buffer_size, out_buffer_size));
+    // // 设置缓冲区容量
+    // TRY(SetupComm(handle, in_buffer_size, out_buffer_size));
     //
-    //    // 订阅事件
-    //    TRY(SetCommMask(handle, EV_RXCHAR));
+    // // 订阅事件
+    // TRY(SetCommMask(handle, EV_RXCHAR));
 }
 
 serial_port::~serial_port() {
