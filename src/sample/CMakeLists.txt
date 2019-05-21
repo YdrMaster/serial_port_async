@@ -2,5 +2,6 @@
 
 set(CMAKE_CXX_STANDARD 11)
 
-add_executable(serial_port_sample main.cpp)
+add_executable(serial_port_sample test_break_read.cpp)
 target_link_libraries(serial_port_sample serial_port_async)
+target_link_libraries(serial_port_sample pthread)

@@ -1,0 +1,2 @@
+# first time: sudo chmod +x permission
+sudo chmod 666 /dev/ttyUSB*

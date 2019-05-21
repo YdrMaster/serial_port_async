@@ -8,7 +8,7 @@
 
 int main() {
 	try {
-        serial_port port("COM3", 115200);
+        serial_port port("/dev/ttyUSB0", 115200);
 		
 		/** 此线程控制读线程 */
 		std::thread([&port] {
@@ -26,6 +26,8 @@ int main() {
 	} catch (std::exception &e) {
 		std::cerr << e.what() << std::endl;
 	}
-	
-	return 0;
+    
+    std::cout << "closed <--" << std::endl;
+    
+    return 0;
 }

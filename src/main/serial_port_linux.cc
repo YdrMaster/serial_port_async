@@ -15,7 +15,7 @@
 #include <termios.h>
 #include <cstring>
 
-#define TRY(OPERATION) if(OPERATION) THROW(#OPERATION, std::strerror(errno))
+#define TRY(OPERATION) if(!OPERATION) THROW(#OPERATION, std::strerror(errno))
 
 inline int trans_baud(int number) {
     switch (number) {
@@ -97,21 +97,18 @@ serial_port::serial_port(const std::string &name,
     
     // 设置端口设定
     termios options{};
-    TRY(tcgetattr(handle, &options));
+    TRY(!tcgetattr(handle, &options));
     cfsetispeed(&options, trans_baud(baud_rate));
     cfsetospeed(&options, trans_baud(baud_rate));
     options.c_cflag |= CS8;
-    TRY(tcsetattr(handle, TCSADRAIN, &options));
     
-    // // 设置超时时间
-    // COMMTIMEOUTS timeouts{3, 1, 0, 10, 0};
-    // TRY(SetCommTimeouts(handle, &timeouts));
-    //
-    // // 设置缓冲区容量
-    // TRY(SetupComm(handle, in_buffer_size, out_buffer_size));
-    //
-    // // 订阅事件
-    // TRY(SetCommMask(handle, EV_RXCHAR));
+    // 不超时
+    options.c_cc[VTIME] = -1;
+    
+    // 原始模式
+    options.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+    
+    TRY(!tcsetattr(handle, TCSANOW, &options));
 }
 
 serial_port::~serial_port() {
@@ -121,67 +118,17 @@ serial_port::~serial_port() {
     close(temp);
 }
 
-//void WINAPI callback(DWORD error_code,
-//                     DWORD actual,
-//                     LPOVERLAPPED overlapped) {
-//    delete static_cast<std::vector<uint8_t> *>(overlapped->hEvent);
-//    delete overlapped;
-//
-//    if (error_code != ERROR_SUCCESS)
-//        THROW("WriteFileEx", error_code);
-//}
-
 void serial_port::send(const uint8_t *buffer, size_t size) {
-    if (size <= 0) return;
-    
-    //    auto overlapped = new OVERLAPPED{};
-    //    auto ptr        = new std::vector<uint8_t>(buffer, buffer + size);
-    //    overlapped->hEvent = ptr;
-    //    WriteFileEx(handle, ptr->data(), size, overlapped, &callback);
-    //    SleepEx(INFINITE, true);
+    if (size > 0) TRY(size == write(handle, buffer, size));
 }
 
 size_t serial_port::read(uint8_t *buffer, size_t size) {
     weak_lock_guard lock(read_mutex);
-    if (!lock) return 0;
-    
-    //    DWORD      event = 0;
-    //    OVERLAPPED overlapped{};
-    //
-    //    do {
-    //        overlapped.hEvent = CreateEventA(nullptr, true, false, nullptr);
-    //        if (!WaitCommEvent(handle, &event, &overlapped)) {
-    //            auto condition = GetLastError();
-    //            if (condition != ERROR_IO_PENDING)
-    //                THROW("WaitCommEvent", condition);
-    //        }
-    //
-    //        DWORD progress = 0;
-    //        GetOverlappedResult(handle, &overlapped, &progress, true);
-    //        if (event == 0) return 0;
-    //    } while (event != EV_RXCHAR);
-    //
-    //    ReadFile(handle, buffer, size, nullptr, &overlapped);
-    //    auto condition = GetLastError();
-    //    switch (condition) {
-    //        case ERROR_SUCCESS:
-    //        case ERROR_IO_PENDING: {
-    //            DWORD actual = 0;
-    //            GetOverlappedResult(handle, &overlapped, &actual, true);
-    //            return actual;
-    //        }
-    //        default:
-    //            THROW("ReadFile", condition);
-    //    }
+    return !lock ? 0 : ::read(handle, buffer, size);
 }
 
 void serial_port::break_read() const {
     weak_lock_guard lock(read_mutex);
-    
-    while (!lock.retry()) {
-        // SetCommMask(handle, EV_RXCHAR);
-        std::this_thread::yield();
-    }
 }
 
 #endif
