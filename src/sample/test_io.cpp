@@ -16,7 +16,10 @@ int main() {
 		}).detach();
 		
 		const auto text = "abcde";
-		while (true) port.send((uint8_t *) text, std::strlen(text));
+        while (true) {
+            port.send((uint8_t *) text, std::strlen(text));
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
 	} catch (std::exception &e) {
 		std::cerr << e.what() << std::endl;
 	}
